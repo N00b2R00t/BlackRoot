@@ -1,0 +1,6 @@
+{
+  "name": "BlackRoot",
+  "description": "A dark hacker-themed CLI terminal and professional coding IDE.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
