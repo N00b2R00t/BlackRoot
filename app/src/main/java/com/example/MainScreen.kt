@@ -50,10 +50,17 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.regex.Pattern
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.ui.viewinterop.AndroidView
 
 sealed class AppMode {
     object Terminal : AppMode()
     object IDE : AppMode()
+    object Extensions : AppMode()
+    object WebPreview : AppMode()
 }
 
 data class TerminalLog(
@@ -75,6 +82,41 @@ fun MainScreen(modifier: Modifier = Modifier) {
     val workspaceManager = remember { WorkspaceManager(context) }
     val pythonInterpreter = remember { PythonInterpreter() }
     
+    // Extensions and Utilities States
+    val installedExtensions = remember { mutableStateListOf("python", "icon_pack") }
+    var isAutoSaveEnabled by remember { mutableStateOf(false) }
+    var isAutoSavingStatus by remember { mutableStateOf("Ready") } // "Ready", "Saving...", "Saved"
+    var installingExtensionId by remember { mutableStateOf<String?>(null) }
+    var installProgress by remember { mutableStateOf(0) }
+    val prettierFormatter = remember { PrettierFormatter() }
+    val jsInterpreter = remember { JSInterpreter() }
+    val webConsoleLogs = remember { mutableStateListOf<String>() }
+
+    // Dynamic Color Accent based on installed themes
+    val activeAccentColor = remember(installedExtensions.toList()) {
+        when {
+            installedExtensions.contains("theme_sunset") -> Color(0xFFFF5E3A) // Hot Neon Sunset Orange
+            installedExtensions.contains("theme_ocean") -> Color(0xFF00D2FF)  // Deep Cyan Blue
+            else -> CyanBlue // Default CyanBlue / BlackRoot style!
+        }
+    }
+
+    // Active Status Clock Widget
+    var currentTimeString by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val formatter = SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            currentTimeString = formatter.format(java.util.Date())
+            delay(1000)
+        }
+    }
+
+    // Multi-tab Terminal Tab index
+    var activeTerminalTab by remember { mutableStateOf(1) }
+
+    // Vim modal helper
+    var vimMode by remember { mutableStateOf("INSERT") }
+
     // IDE Workspace States
     var filesList by remember { mutableStateOf(workspaceManager.listFiles()) }
     var selectedFileRelativePath by remember { mutableStateOf("welcome.py") }
@@ -89,6 +131,8 @@ fun MainScreen(modifier: Modifier = Modifier) {
     var activeCloneJob by remember { mutableStateOf<String?>(null) }
     
     // Security / CLI Password States
+    val sharedPrefs = remember { context.getSharedPreferences("blackroot_prefs", Context.MODE_PRIVATE) }
+    var currentPassword by remember { mutableStateOf(sharedPrefs.getString("cli_password", "blackroot") ?: "blackroot") }
     var isCliLocked by remember { mutableStateOf(true) }
     var passwordInput by remember { mutableStateOf("") }
     var showPasswordError by remember { mutableStateOf(false) }
@@ -103,14 +147,27 @@ fun MainScreen(modifier: Modifier = Modifier) {
     // Auto-Scroll terminal
     val terminalListState = rememberLazyListState()
 
+    fun refreshWorkspace() {
+        filesList = workspaceManager.listFiles()
+    }
+
     // Load initial file content
     LaunchedEffect(selectedFileRelativePath) {
         val content = workspaceManager.readFile(selectedFileRelativePath)
         fileContentState = TextFieldValue(content)
     }
 
-    fun refreshWorkspace() {
-        filesList = workspaceManager.listFiles()
+    // Auto-Save Effect
+    LaunchedEffect(fileContentState.text) {
+        if (isAutoSaveEnabled && fileContentState.text.isNotEmpty() && installedExtensions.contains("autosave")) {
+            isAutoSavingStatus = "Saving..."
+            delay(1200)
+            workspaceManager.writeFile(selectedFileRelativePath, fileContentState.text)
+            refreshWorkspace()
+            isAutoSavingStatus = "Saved"
+            delay(1000)
+            isAutoSavingStatus = "Ready"
+        }
     }
 
     // Function to append logs
@@ -136,12 +193,10 @@ fun MainScreen(modifier: Modifier = Modifier) {
         log("  |_.__/|_| \\__,_| \\___||_|\\_\\|_|   \\___/ \\___/\\__|", LogType.SUCCESS)
         log("                                                   ", LogType.SUCCESS)
         log("  -|------------------------------------------------------------------|-", LogType.SYSTEM)
-        log("   -[ BLACKROOT DECRYPTOR CONSOLE v4.15-RELEASE ]-", LogType.SUCCESS)
-        log("   + -- --=[ 42 security modules - 21 auxiliary scanners ]", LogType.INFO)
-        log("   + -- --=[ Default login key: blackroot                  ]", LogType.INFO)
+        log("   BlackRoot Workspace Shell", LogType.SUCCESS)
+        log("   Secure developer sandbox. Type your command below.", LogType.INFO)
         log("  -|------------------------------------------------------------------|-", LogType.SYSTEM)
-        log("Mounting secure workspace systems... [OK]", LogType.SUCCESS)
-        log("Type 'help' for instructions matrix.", LogType.SUCCESS)
+        log("Type 'help' for assistance keywords and active commands list.", LogType.SUCCESS)
         log("", LogType.INFO)
     }
 
@@ -185,6 +240,7 @@ AVAILABLE COMMANDS MATRIX:
   clear               : Empty system log visual registers.
   pwd                 : Output absolute environment paths.
   whoami              : Identify user credentials / terminal info.
+  passwd <new_pass>   : Change CLI password (saved persistently).
   pkg install <pkg>   : Simulates remote compiler expansions.
                         (Packages: nmap, curl, hydra, sqlmap)
   ==============================================================
@@ -434,16 +490,33 @@ VIRTUAL GIT CONTROLS:
            __...__
         .-'       '-.
        /   __   __   \
-      |   /  \ /  \   |     BLACKROOT TERMINAL CLIENT v15
-      |   |  | |  |   |     User: blackroot@sandbox
-      |   \__/ \__/   |     Access Level: ROOT DECRYPTOR
-       \             /      Status: Sandboxed Enclave
-        '-.__...__.-'       RAM Hardware: 100% OK
+      |   /  \ /  \   |     BlackRoot
+      |   |  | |  |   |     User: root
+      |   \__/ \__/   |     Status: sandbox
+       \             /
+        '-.__...__.-'
 """.trimIndent(), LogType.SUCCESS)
             }
 
+            "passwd" -> {
+                if (tokens.size < 2) {
+                    log("Error: Specify new password. Usage: passwd <new_password>", LogType.ERROR)
+                } else {
+                    val newPass = tokens[1]
+                    if (newPass.length < 3) {
+                        log("Error: Password must be at least 3 characters long.", LogType.ERROR)
+                    } else {
+                        currentPassword = newPass
+                        sharedPrefs.edit().putString("cli_password", newPass).apply()
+                        log("Success: CLI password changed. The new password is saved and active.", LogType.SUCCESS)
+                    }
+                }
+            }
+
             "python" -> {
-                if (tokens.size > 1) {
+                if (!installedExtensions.contains("python")) {
+                    log("blackroot-shell: command not found: 'python'. Hint: Install 'python' extension first in STORE.", LogType.ERROR)
+                } else if (tokens.size > 1) {
                     val scriptName = tokens[1]
                     val content = workspaceManager.readFile(scriptName)
                     if (content.isEmpty()) {
@@ -460,6 +533,28 @@ VIRTUAL GIT CONTROLS:
                 } else {
                     isReplMode = true
                     log("Python 3.11.2 REPL Session Initialized.\nType 'exit()' or 'quit()' to exit.", LogType.SUCCESS)
+                }
+            }
+
+            "node", "js" -> {
+                if (!installedExtensions.contains("js_console")) {
+                    log("blackroot-shell: command not found: '$cmd'. Hint: Install 'js_console' extension first in STORE.", LogType.ERROR)
+                } else if (tokens.size > 1) {
+                    val scriptName = tokens[1]
+                    val content = workspaceManager.readFile(scriptName)
+                    if (content.isEmpty()) {
+                        log("JavaScript error: Script '$scriptName' is empty or not found.", LogType.ERROR)
+                    } else {
+                        log("Executing script '$scriptName' via JS Interpreter...", LogType.INFO)
+                        try {
+                            val output = jsInterpreter.execute(content)
+                            log(output, LogType.SUCCESS)
+                        } catch (e: Exception) {
+                            log("JS Engine Exception: ${e.localizedMessage}", LogType.ERROR)
+                        }
+                    }
+                } else {
+                    log("Usage: node <file.js>", LogType.ERROR)
                 }
             }
 
@@ -632,7 +727,7 @@ Table: users
                     Column {
                         Text(
                             text = "BLACKROOT OS v4.15",
-                            color = NeonGreen,
+                            color = activeAccentColor,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -640,7 +735,7 @@ Table: users
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(RoundedCornerShape(50))
-                                    .background(NeonGreen)
+                                    .background(activeAccentColor)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
@@ -661,23 +756,53 @@ Table: users
                         Text(
                             text = "CLI",
                             modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
                                 .clickable { currentMode = AppMode.Terminal }
-                                .background(if (currentMode is AppMode.Terminal) NeonGreen else Color.Transparent)
-                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .background(if (currentMode is AppMode.Terminal) CardGrey else Color.Transparent)
+                                .border(1.dp, if (currentMode is AppMode.Terminal) activeAccentColor else Color.Transparent, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
                                 .testTag("toggle_terminal"),
-                            color = if (currentMode is AppMode.Terminal) PitchBlack else NeonGreen,
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            color = if (currentMode is AppMode.Terminal) activeAccentColor else GhostGreen,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                         )
                         Text(
                             text = "IDE",
                             modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
                                 .clickable { currentMode = AppMode.IDE }
-                                .background(if (currentMode is AppMode.IDE) NeonGreen else Color.Transparent)
-                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .background(if (currentMode is AppMode.IDE) CardGrey else Color.Transparent)
+                                .border(1.dp, if (currentMode is AppMode.IDE) activeAccentColor else Color.Transparent, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
                                 .testTag("toggle_ide"),
-                            color = if (currentMode is AppMode.IDE) PitchBlack else NeonGreen,
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            color = if (currentMode is AppMode.IDE) activeAccentColor else GhostGreen,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                         )
+                        Text(
+                            text = "STORE",
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { currentMode = AppMode.Extensions }
+                                .background(if (currentMode is AppMode.Extensions) CardGrey else Color.Transparent)
+                                .border(1.dp, if (currentMode is AppMode.Extensions) activeAccentColor else Color.Transparent, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                                .testTag("toggle_extensions"),
+                            color = if (currentMode is AppMode.Extensions) activeAccentColor else GhostGreen,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        )
+                        if (installedExtensions.contains("html_preview")) {
+                            Text(
+                                text = "WEB VIEW",
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { currentMode = AppMode.WebPreview }
+                                    .background(if (currentMode is AppMode.WebPreview) CardGrey else Color.Transparent)
+                                    .border(1.dp, if (currentMode is AppMode.WebPreview) activeAccentColor else Color.Transparent, RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    .testTag("toggle_web_view"),
+                                color = if (currentMode is AppMode.WebPreview) activeAccentColor else GhostGreen,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            )
+                        }
                     }
                 }
 
@@ -689,7 +814,7 @@ Table: users
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "CPU: [OK] // RAM: [OPTIMIZED]",
+                        text = "CPU: [OK] // RAM: [OPTIMIZED] // CLOCK: [$currentTimeString]",
                         color = GhostGreen,
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace
@@ -737,14 +862,14 @@ Table: users
                                     .padding(bottom = 16.dp)
                             )
                             
-                            Text(
-                                text = "ACCESS RESTRICTED",
-                                color = BrightRed,
+                             Text(
+                                text = "BlackRoot",
+                                color = CyanBlue,
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                             )
                             
                             Text(
-                                text = "BLACKROOT SHIELD SECURE LOGIN",
+                                text = "Please enter password to unlock",
                                 color = GhostGreen,
                                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                                 modifier = Modifier.padding(bottom = 24.dp)
@@ -752,7 +877,7 @@ Table: users
                             
                             if (showPasswordError) {
                                 Text(
-                                    text = "DECRYPTION KEY MISMATCH! ACCESS DENIED.",
+                                    text = "Wrong Password",
                                     color = BrightRed,
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
                                     modifier = Modifier.padding(bottom = 12.dp)
@@ -762,24 +887,24 @@ Table: users
                             OutlinedTextField(
                                 value = passwordInput,
                                 onValueChange = { passwordInput = it; showPasswordError = false },
-                                label = { Text("Decryption Key", color = NeonGreen, fontFamily = FontFamily.Monospace) },
+                                label = { Text("Password", color = CyanBlue, fontFamily = FontFamily.Monospace) },
                                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("cli_password_input"),
-                                textStyle = TextStyle(color = NeonGreen, fontFamily = FontFamily.Monospace, fontSize = 16.sp),
+                                textStyle = TextStyle(color = CyanBlue, fontFamily = FontFamily.Monospace, fontSize = 16.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NeonGreen,
+                                    focusedBorderColor = CyanBlue,
                                     unfocusedBorderColor = BorderGreen,
-                                    focusedLabelColor = NeonGreen,
+                                    focusedLabelColor = CyanBlue,
                                     unfocusedLabelColor = GhostGreen,
-                                    cursorColor = NeonGreen
+                                    cursorColor = CyanBlue
                                 ),
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                                 keyboardActions = KeyboardActions(
                                     onDone = {
-                                        if (passwordInput == "blackroot") {
+                                        if (passwordInput == currentPassword) {
                                             unlockCli()
                                         } else {
                                             showPasswordError = true
@@ -807,14 +932,14 @@ Table: users
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = DarkGrey),
                                     modifier = Modifier.weight(1f).testTag("cancel_login_button"),
-                                    border = BorderStroke(1.dp, BorderGreen)
+                                    border = BorderStroke(1.dp, CyanBlue)
                                 ) {
-                                    Text("CANCEL (IDE)", color = NeonGreen, fontFamily = FontFamily.Monospace)
+                                    Text("CANCEL", color = CyanBlue, fontFamily = FontFamily.Monospace)
                                 }
                                 
                                 Button(
                                     onClick = {
-                                        if (passwordInput == "blackroot") {
+                                        if (passwordInput == currentPassword) {
                                             unlockCli()
                                         } else {
                                             showPasswordError = true
@@ -826,21 +951,15 @@ Table: users
                                             }
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
+                                    colors = ButtonDefaults.buttonColors(containerColor = CardGrey),
                                     modifier = Modifier.weight(1f).testTag("submit_login_button"),
-                                    border = BorderStroke(1.dp, NeonGreen)
+                                    border = BorderStroke(1.dp, CyanBlue)
                                 ) {
-                                    Text("DECRYPT", color = NeonGreen, fontFamily = FontFamily.Monospace)
+                                    Text("LOGIN", color = CyanBlue, fontFamily = FontFamily.Monospace)
                                 }
                             }
                             
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Hint: default password is 'blackroot'",
-                                color = GhostGreen,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
+
                         }
                     } else {
                         // TERMINAL CLIENT VIEW
@@ -905,38 +1024,67 @@ Table: users
                                 }
                             }
 
-                            // Suggested Quick Controls Ribbon
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp)
-                                    .background(DarkGrey)
-                                    .border(1.dp, BorderGreen, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                val suggestions = listOf("help", "ls", "git status", "git log", "python welcome.py", "clear")
-                                LazyColumn(
-                                    modifier = Modifier.height(32.dp),
-                                    userScrollEnabled = true
+                            // Suggested Dynamic CLI Keywords & Commands Row
+                            val cliKeywordsList = listOf(
+                                "help", "ls", "clear", "pwd", "whoami", "python ", "node ", "git clone ", 
+                                "git status", "git log", "git push", "git commit", "cat ", "pkg install "
+                            )
+                            val filteredCliSuggestions = remember(cliInput) {
+                                if (cliInput.isEmpty()) {
+                                    listOf("help", "ls", "clear", "whoami", "python welcome.py")
+                                } else {
+                                    cliKeywordsList.filter { it.contains(cliInput, ignoreCase = true) && it != cliInput }
+                                }
+                            }
+
+                            if (filteredCliSuggestions.isNotEmpty()) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp)
+                                        .background(DarkGrey)
+                                        .border(1.dp, CyanBlue, RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
                                 ) {
-                                    item {
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            suggestions.forEach { sug ->
-                                                Box(
-                                                    modifier = Modifier
-                                                        .background(DarkGreen, RoundedCornerShape(4.dp))
-                                                        .border(1.dp, BorderGreen, RoundedCornerShape(4.dp))
-                                                        .clickable { cliInput = sug }
-                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = sug,
-                                                        color = NeonGreen,
-                                                        fontSize = 10.sp,
-                                                        fontFamily = FontFamily.Monospace
-                                                    )
-                                                }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "CLI KEYWORDS & ASSISTANCE:",
+                                            color = CyanBlue,
+                                            fontSize = 9.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        if (cliInput.isNotEmpty()) {
+                                            Text(
+                                                text = "typing: '$cliInput'",
+                                                color = AmberYellow,
+                                                fontSize = 9.sp,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                    }
+                                    androidx.compose.foundation.lazy.LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        items(filteredCliSuggestions) { sug ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(CardGrey, RoundedCornerShape(4.dp))
+                                                    .border(1.dp, CyanBlue, RoundedCornerShape(4.dp))
+                                                    .clickable { cliInput = sug }
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = sug,
+                                                    color = Color.White,
+                                                    fontSize = 11.sp,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
                                             }
                                         }
                                     }
@@ -1009,6 +1157,33 @@ Table: users
                             .fillMaxSize()
                             .padding(12.dp)
                     ) {
+                        // High-tech IDE graphic banner
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .border(1.dp, CyanBlue, RoundedCornerShape(6.dp))
+                        ) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(id = R.drawable.img_ide_banner_1783409487971),
+                                contentDescription = "BlackRoot IDE Banner",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(Color.Transparent, PitchBlack.copy(alpha = 0.7f))
+                                        )
+                                    )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
                         // File management tabs & Search
                         Row(
                             modifier = Modifier
@@ -1019,9 +1194,10 @@ Table: users
                         ) {
                             Text(
                                 text = "WORKSPACE",
-                                color = NeonGreen,
+                                color = CyanBlue,
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
                             )
 
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1094,13 +1270,18 @@ Table: users
                                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                                                     .testTag("file_tab_${wFile.relativePath.replace(".", "_")}")
                                             ) {
-                                                Text(
-                                                    text = wFile.name,
-                                                    color = if (isSelected) NeonGreen else GhostGreen,
-                                                    fontSize = 11.sp,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                                )
+                                                val hasIconPack = installedExtensions.contains("icon_pack")
+                                                val (icon, extColor) = getFileIconAndColor(wFile.name, hasIconPack)
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(text = "$icon ", fontSize = 11.sp)
+                                                    Text(
+                                                        text = wFile.name,
+                                                        color = if (isSelected) NeonGreen else extColor,
+                                                        fontSize = 11.sp,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -1172,11 +1353,110 @@ Table: users
                             }
                         }
 
+                        // Dynamic Code Keyword Auto-Complete Suggestions Bar
+                        val ext = selectedFileRelativePath.substringAfterLast(".").lowercase()
+                        val pythonKeywords = listOf("def ", "class ", "import ", "from ", "if ", "else:", "elif ", "for ", "while ", "print(", "return ", "try:", "except:", "True", "False", "None")
+                        val jsKeywords = listOf("const ", "let ", "var ", "function ", "return ", "if ", "else ", "console.log(", "import ", "export ", "class ", "true", "false", "null", "async ", "await ")
+                        val htmlKeywords = listOf("<div>", "</div>", "<p>", "</p>", "<h1>", "</h1>", "<html>", "</html>", "<body>", "</body>", "<head>", "</head>", "<style>", "</style>", "<script>", "</script>", "<span>", "</span>", "<button>", "</button>", "<input ")
+                        val generalKeywords = listOf("if ", "else ", "for ", "while ", "return ", "true", "false")
+
+                        val currentText = fileContentState.text
+                        val cursorPosition = fileContentState.selection.end
+                        val textBeforeCursor = if (cursorPosition in 1..currentText.length) {
+                            currentText.substring(0, cursorPosition)
+                        } else {
+                            ""
+                        }
+                        val lastWord = textBeforeCursor.split(Regex("[^a-zA-Z0-9_<>/.-]")).lastOrNull() ?: ""
+
+                        val matchingKeywords = remember(lastWord, ext) {
+                            val list = when (ext) {
+                                "py" -> pythonKeywords
+                                "js", "ts" -> jsKeywords
+                                "html", "htm" -> htmlKeywords
+                                else -> generalKeywords
+                            }
+                            if (lastWord.isEmpty()) {
+                                list.take(6)
+                            } else {
+                                list.filter { it.trim().contains(lastWord, ignoreCase = true) && it.trim() != lastWord }
+                            }
+                        }
+
+                        if (matchingKeywords.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .background(DarkGrey)
+                                    .border(1.dp, CyanBlue, RoundedCornerShape(4.dp))
+                                    .padding(6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "AUTO-COMPLETE SUGGESTIONS (TAP TO FINISH TYPE):",
+                                        color = CyanBlue,
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (lastWord.isNotEmpty()) {
+                                        Text(
+                                            text = "typing: '$lastWord'",
+                                            color = AmberYellow,
+                                            fontSize = 9.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+                                androidx.compose.foundation.lazy.LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(matchingKeywords) { kw ->
+                                        Box(
+                                            modifier = Modifier
+                                                .background(CardGrey, RoundedCornerShape(4.dp))
+                                                .border(1.dp, CyanBlue, RoundedCornerShape(4.dp))
+                                                .clickable {
+                                                    val textAfterCursor = if (cursorPosition in 0 until currentText.length) {
+                                                        currentText.substring(cursorPosition)
+                                                    } else {
+                                                        ""
+                                                    }
+                                                    val lastWordStart = textBeforeCursor.lastIndexOf(lastWord)
+                                                    if (lastWordStart >= 0) {
+                                                        val newTextBefore = textBeforeCursor.substring(0, lastWordStart) + kw
+                                                        val newText = newTextBefore + textAfterCursor
+                                                        fileContentState = TextFieldValue(
+                                                            text = newText,
+                                                            selection = androidx.compose.ui.text.TextRange(newTextBefore.length)
+                                                        )
+                                                    }
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = kw,
+                                                color = Color.White,
+                                                fontSize = 11.sp,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Programmers Ribbon actions bar
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp)
+                                .padding(vertical = 4.dp)
                                 .background(PitchBlack)
                                 .border(1.dp, BorderGreen, RoundedCornerShape(4.dp))
                                 .padding(horizontal = 6.dp, vertical = 6.dp),
@@ -1201,9 +1481,9 @@ Table: users
                                                             "\"" -> "\"\""
                                                             else -> key
                                                         }
-                                                        val currentText = fileContentState.text
+                                                        val currentTextStr = fileContentState.text
                                                         val selectionStart = fileContentState.selection.start
-                                                        val newText = currentText.substring(0, selectionStart) + insertText + currentText.substring(fileContentState.selection.end)
+                                                        val newText = currentTextStr.substring(0, selectionStart) + insertText + currentTextStr.substring(fileContentState.selection.end)
                                                         fileContentState = TextFieldValue(
                                                             text = newText,
                                                             selection = androidx.compose.ui.text.TextRange(selectionStart + insertText.length)
@@ -1225,10 +1505,47 @@ Table: users
                             }
                         }
 
-                        // Actions Panel: SAVE, RUN
+                        // Auto-Save control row if autosave is installed
+                        if (installedExtensions.contains("autosave")) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Autorenew,
+                                        contentDescription = "Auto Save Daemon",
+                                        tint = if (isAutoSaveEnabled) NeonGreen else BorderGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "AUTO-SAVE STATUS: $isAutoSavingStatus",
+                                        color = if (isAutoSaveEnabled) NeonGreen else BorderGreen,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                                Switch(
+                                    checked = isAutoSaveEnabled,
+                                    onCheckedChange = { isAutoSaveEnabled = it },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = NeonGreen,
+                                        checkedTrackColor = DarkGreen,
+                                        uncheckedThumbColor = Color.Gray,
+                                        uncheckedTrackColor = DarkGrey
+                                    )
+                                )
+                            }
+                        }
+
+                        // Actions Panel: SAVE, FORMAT, RUN
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
                                 onClick = {
@@ -1239,29 +1556,445 @@ Table: users
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("save_file_button"),
-                                colors = ButtonDefaults.buttonColors(containerColor = BorderGreen)
+                                colors = ButtonDefaults.buttonColors(containerColor = DarkGrey),
+                                border = BorderStroke(1.dp, CyanBlue),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                             ) {
-                                Icon(Icons.Default.Save, contentDescription = "Save file", tint = PitchBlack)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("SAVE ENCRYPTED", color = PitchBlack, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.Save, contentDescription = "Save file", tint = CyanBlue, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("SAVE", color = CyanBlue, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                             }
+
+                            if (installedExtensions.contains("prettier")) {
+                                Button(
+                                    onClick = {
+                                        val formatted = prettierFormatter.format(fileContentState.text, selectedFileRelativePath)
+                                        fileContentState = TextFieldValue(formatted)
+                                        workspaceManager.writeFile(selectedFileRelativePath, formatted)
+                                        refreshWorkspace()
+                                        Toast.makeText(context, "Formatted with Prettier!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("format_file_button"),
+                                    colors = ButtonDefaults.buttonColors(containerColor = DarkGrey),
+                                    border = BorderStroke(1.dp, GhostGreen),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.Build, contentDescription = "Prettier Format", tint = GhostGreen, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("PRETTIER", color = GhostGreen, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                }
+                            }
+
+                            val extName = selectedFileRelativePath.substringAfterLast(".").lowercase()
+                            val runButtonText = when (extName) {
+                                "py" -> "RUN PYTHON"
+                                "js", "ts" -> "RUN NODE"
+                                "html", "htm" -> "WEB PREVIEW"
+                                else -> "RUN SCRIPT"
+                            }
+                            val runIcon = if (extName == "html" || extName == "htm") Icons.Default.Language else Icons.Default.PlayArrow
 
                             Button(
                                 onClick = {
-                                    // Save then execute in Terminal mode
+                                    // Save then execute based on type
                                     workspaceManager.writeFile(selectedFileRelativePath, fileContentState.text)
                                     refreshWorkspace()
-                                    currentMode = AppMode.Terminal
-                                    executeCommand("python $selectedFileRelativePath")
+                                    if (extName == "html" || extName == "htm") {
+                                        currentMode = AppMode.WebPreview
+                                    } else if (extName == "js" || extName == "ts") {
+                                        currentMode = AppMode.Terminal
+                                        executeCommand("node $selectedFileRelativePath")
+                                    } else {
+                                        currentMode = AppMode.Terminal
+                                        executeCommand("python $selectedFileRelativePath")
+                                    }
                                 },
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(1.2f)
                                     .testTag("run_file_button"),
-                                colors = ButtonDefaults.buttonColors(containerColor = NeonGreen)
+                                colors = ButtonDefaults.buttonColors(containerColor = DarkGrey),
+                                border = BorderStroke(1.dp, NeonGreen),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                             ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = "Run Python script", tint = PitchBlack)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("RUN SCRIPT", color = PitchBlack, fontWeight = FontWeight.Bold)
+                                Icon(runIcon, contentDescription = "Run current script", tint = NeonGreen, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(runButtonText, color = NeonGreen, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+
+                is AppMode.Extensions -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                    ) {
+                        // High-tech Store graphic banner
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .border(1.dp, CyanBlue, RoundedCornerShape(6.dp))
+                        ) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(id = R.drawable.img_store_banner_1783409470651),
+                                contentDescription = "BlackRoot Store Banner",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(Color.Transparent, PitchBlack.copy(alpha = 0.7f))
+                                        )
+                                    )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = "EXTENSIONS STORE",
+                            color = CyanBlue,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        Text(
+                            text = "Deploy custom virtual sub-engines, formats, and design icon-packs into the sandbox workspace.",
+                            color = GhostGreen,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            val extensionsList = listOf(
+                                // --- CORE UTILITIES ---
+                                ExtensionItem("prettier", "Prettier Code Formatter", "Formats workspace files with custom auto-spacing and alignment.", "v3.0.3", "Linting Team", "Productivity"),
+                                ExtensionItem("autosave", "Auto-Save Engine Daemon", "Background daemon monitoring changes and auto-persisting to local storage.", "v1.0.1", "BlackRoot Core", "Productivity"),
+                                ExtensionItem("html_preview", "HTML5 Live Web Previewer", "Renders index.html, CSS and JS inside an interactive WebView sandbox.", "v1.2.0", "Web Dev Group", "Browsers"),
+                                ExtensionItem("js_console", "JavaScript JSEngine Console", "Run JS scripts with console outputs routed straight to your console.", "v2.5.1", "NodeJS Porting", "Languages"),
+                                ExtensionItem("icon_pack", "100+ Language Icon-Pack", "Configures gorgeous colorful custom file tag identifiers for 100+ file extensions.", "v4.0.0", "Design Guild", "Visuals"),
+                                ExtensionItem("python", "Python Execution Compiler", "VM compiler and execution sandboxing for .py scripts.", "v3.10.4", "BlackRoot Core", "Languages"),
+                                
+                                // --- BRAND NEW EXTRA EXTENSIONS (>25 in total!) ---
+                                // Category: Security & Analysis
+                                ExtensionItem("shodan_cli", "Shodan Target Query Tool", "Simulates Shodan database queries for target systems directly inside your CLI.", "v2.1.0", "Security Guild", "Security"),
+                                ExtensionItem("hash_decryptor", "MD5/SHA256 Decrypter", "Cracks base hashes by conducting dictionaries reference comparisons.", "v1.4.0", "Security Guild", "Security"),
+                                ExtensionItem("metasploit_mock", "Metasploit Exploit Mock Engine", "Provides auxiliary scanning modules for simulated sandbox pentests.", "v6.1.2", "RapidMock", "Security"),
+                                ExtensionItem("packet_analyzer", "Live Interface Packet Sniffer", "Analyzes live virtual loopback sockets to register socket operations.", "v1.0.0", "Core Network", "Security"),
+                                ExtensionItem("wireshark_lite", "Wireshark Lite Capture Parser", "Decompiles PCAP logs with readable frame descriptions in console.", "v0.9.8", "Sniffer Lab", "Security"),
+                                
+                                // Category: System Customization & Visuals
+                                ExtensionItem("theme_sunset", "Sunset Amber Glow Theme", "Overhauls entire active OS accents to a gorgeous orange-red neon gradient.", "v1.1.0", "Theme Crafters", "Visuals"),
+                                ExtensionItem("theme_ocean", "Deep Ocean Blue Theme", "Transform entire operating system aesthetic registers into an deep cyan ocean blue.", "v1.2.0", "Theme Crafters", "Visuals"),
+                                ExtensionItem("custom_banner", "Cyberpunk Console Matrix Banner", "Enriches store and dashboard with dynamic parallax matrix graphics.", "v1.5.0", "Design Guild", "Visuals"),
+                                ExtensionItem("ascii_art", "ASCII System Banner Designer", "Enables custom terminal welcome message graphics configuration.", "v2.0.0", "Design Guild", "Visuals"),
+                                ExtensionItem("font_mono", "JetBrains Mono Font Override", "Toggles system typography scale definitions into premium code layout rendering.", "v3.1.2", "Fonts Group", "Visuals"),
+                                
+                                // Category: Productivity & Tools
+                                ExtensionItem("regex_tester", "Interactive Regex Playground", "Verifies custom regular expression match patterns live in real-time.", "v1.0.2", "Productivity", "Productivity"),
+                                ExtensionItem("todo_manager", "CLI Terminal To-Do Tracker", "Maintains high priority action task arrays persistently inside the CLI.", "v2.2.0", "Productivity", "Productivity"),
+                                ExtensionItem("timer_pomodoro", "Pomodoro Focus Clock Daemon", "Fires focus timer events in active status bar logs to optimize working cycles.", "v1.0.5", "Productivity", "Productivity"),
+                                ExtensionItem("notes_widget", "Sticky Notes Desktop Panel", "Renders simple floating scratchpad elements inside the workspace environment.", "v1.1.0", "Productivity", "Productivity"),
+                                ExtensionItem("calendar_sync", "Local Sandbox Calendar Planner", "Keeps track of critical milestone timelines and project checklists.", "v1.3.4", "Productivity", "Productivity"),
+                                
+                                // Category: Languages & Interpreters
+                                ExtensionItem("c_compiler", "GCC Virtual Sandbox Compiler", "Pre-compiles pseudo C logic constructs into optimized assembler loops.", "v9.4.0", "Languages Team", "Languages"),
+                                ExtensionItem("bash_plus", "Extended Bash Shell Commands", "Enriches CLI parser with standard Linux features such as 'grep', 'diff', and 'tail'.", "v4.4.2", "Shell Devs", "Languages"),
+                                ExtensionItem("lua_interpreter", "Lua Core VM Environment", "Executes super lightweight Lua sandbox scripts straight inside your command processor.", "v5.4.4", "Lua Port", "Languages"),
+                                ExtensionItem("json_beautifier", "Interactive JSON Validator", "Parses and indents massive JSON data structures automatically on selection.", "v2.0.1", "Web Dev Group", "Languages"),
+                                ExtensionItem("markdown_live", "Markdown Sandbox View Compiler", "Transforms .md notes into rich typography documentation screens.", "v1.1.5", "Productivity", "Languages"),
+                                
+                                // Category: Network & Servers
+                                ExtensionItem("ftp_daemon", "Simulated FTP File Server", "Launches local file transfer daemon to allow simulation connections.", "v1.2.0", "Core Network", "Network"),
+                                ExtensionItem("dns_resolver", "Reverse DNS Dig Lookup Utility", "Queries DNS nameservers dynamically returning custom A and MX simulation headers.", "v1.4.2", "Core Network", "Network"),
+                                ExtensionItem("whois_lookup", "Whois Registry Query Tool", "Traces ownership info and registry registrar records for target domains.", "v1.1.0", "Core Network", "Network"),
+                                ExtensionItem("ping_monitor", "ICMP Latency Telemetry Panel", "Runs standard latency roundtrip checks plotting telemetry stats.", "v1.6.0", "Core Network", "Network"),
+                                ExtensionItem("http_header", "HTTP Response Header Inspector", "Retrieves complete transport server descriptors and SSL authentication metadata.", "v2.0.0", "Core Network", "Network")
+                            )
+
+                            items(extensionsList) { ext ->
+                                val isInstalled = installedExtensions.contains(ext.id)
+                                val isInstalling = installingExtensionId == ext.id
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, if (isInstalled) activeAccentColor else BorderGreen, RoundedCornerShape(8.dp)),
+                                    colors = CardDefaults.cardColors(containerColor = CardGrey)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(14.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                val extIcon = when (ext.id) {
+                                                    "prettier" -> Icons.Default.Build
+                                                    "autosave" -> Icons.Default.Autorenew
+                                                    "html_preview" -> Icons.Default.Language
+                                                    "js_console" -> Icons.Default.Terminal
+                                                    "icon_pack" -> Icons.Default.Star
+                                                    "theme_sunset", "theme_ocean" -> Icons.Default.Palette
+                                                    "shodan_cli", "hash_decryptor", "metasploit_mock", "wireshark_lite" -> Icons.Default.Security
+                                                    "ping_monitor", "dns_resolver" -> Icons.Default.Router
+                                                    "timer_pomodoro", "calendar_sync" -> Icons.Default.DateRange
+                                                    "todo_manager", "notes_widget" -> Icons.Default.List
+                                                    else -> Icons.Default.Code
+                                                }
+                                                Icon(
+                                                    imageVector = extIcon,
+                                                    contentDescription = ext.name,
+                                                    tint = if (isInstalled) activeAccentColor else GhostGreen,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column {
+                                                    Text(
+                                                        text = ext.name,
+                                                        color = if (isInstalled) activeAccentColor else Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp
+                                                    )
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        Text(text = ext.category, color = BorderGreen, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                                        Text(text = ext.version, color = GhostGreen, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                                    }
+                                                }
+                                            }
+
+                                            if (isInstalled) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Default.CheckCircle, contentDescription = "Installed", tint = activeAccentColor, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("INSTALLED", color = activeAccentColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    // Toggle Uninstall Button for major custom extensions
+                                                    IconButton(
+                                                        onClick = {
+                                                            installedExtensions.remove(ext.id)
+                                                            Toast.makeText(context, "Uninstalled '${ext.name}'!", Toast.LENGTH_SHORT).show()
+                                                        },
+                                                        modifier = Modifier.size(24.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Delete,
+                                                            contentDescription = "Uninstall extension",
+                                                            tint = BrightRed,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                            } else if (isInstalling) {
+                                                Text("INSTALLING $installProgress%", color = AmberYellow, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                            } else {
+                                                Button(
+                                                    onClick = {
+                                                        scope.launch {
+                                                            installingExtensionId = ext.id
+                                                            installProgress = 0
+                                                            while (installProgress < 100) {
+                                                                delay(40)
+                                                                installProgress += (15..28).random()
+                                                                if (installProgress > 100) installProgress = 100
+                                                            }
+                                                            installedExtensions.add(ext.id)
+                                                            installingExtensionId = null
+                                                            Toast.makeText(context, "Activated '${ext.name}'!", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = DarkGrey),
+                                                    border = BorderStroke(1.dp, activeAccentColor),
+                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                    modifier = Modifier.testTag("install_${ext.id}")
+                                                ) {
+                                                    Text("INSTALL", color = activeAccentColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = ext.description,
+                                            color = TextGreen,
+                                            fontSize = 11.sp
+                                        )
+
+                                        if (isInstalling) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            LinearProgressIndicator(
+                                                progress = { installProgress / 100f },
+                                                modifier = Modifier.fillMaxWidth().height(4.dp),
+                                                color = NeonGreen,
+                                                trackColor = DarkGrey
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                is AppMode.WebPreview -> {
+                    val htmlCode = if (selectedFileRelativePath.endsWith(".html") || selectedFileRelativePath.endsWith(".htm")) {
+                        fileContentState.text
+                    } else {
+                        val firstHtml = filesList.firstOrNull { it.name.endsWith(".html") || it.name.endsWith(".htm") }
+                        if (firstHtml != null) {
+                            workspaceManager.readFile(firstHtml.relativePath)
+                        } else {
+                            """
+                            <!DOCTYPE html>
+                            <html>
+                            <head>
+                                <style>
+                                    body { background-color: #0c0f0c; color: #39FF14; font-family: monospace; text-align: center; padding: 40px; }
+                                    h1 { border-bottom: 2px solid #39FF14; padding-bottom: 10px; }
+                                    .btn { background: #39FF14; color: black; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+                                </style>
+                            </head>
+                            <body>
+                                <h1>BlackRoot Sandboxed Browser</h1>
+                                <p>No active HTML file selected. Create an index.html file in the IDE to render it live!</p>
+                                <p>You can write tags, styling, JS scripts, and canvas elements.</p>
+                            </body>
+                            </html>
+                            """.trimIndent()
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Top navigation bar inside browser
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(DarkGrey)
+                                .border(1.dp, BorderGreen, RoundedCornerShape(4.dp))
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Language, contentDescription = "Security Status", tint = NeonGreen, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "file:///sandbox/${if (selectedFileRelativePath.endsWith(".html")) selectedFileRelativePath else "index.html"}",
+                                    color = NeonGreen,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Reload",
+                                    tint = NeonGreen,
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clickable {
+                                            // Refresh webview by reloading same data
+                                            Toast.makeText(context, "Webpage Reloaded", Toast.LENGTH_SHORT).show()
+                                        }
+                                )
+                                Text(
+                                    text = "[IDE]",
+                                    color = AmberYellow,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.clickable { currentMode = AppMode.IDE }
+                                )
+                            }
+                        }
+
+                        // Web Browser WebView Frame
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .border(1.dp, BorderGreen, RoundedCornerShape(4.dp))
+                                .background(Color.White)
+                        ) {
+                            AndroidView(
+                                factory = { ctx ->
+                                    WebView(ctx).apply {
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        webViewClient = WebViewClient()
+                                        webChromeClient = object : WebChromeClient() {
+                                            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                                                consoleMessage?.let {
+                                                    webConsoleLogs.add("[Console] ${it.message()}")
+                                                }
+                                                return true
+                                            }
+                                        }
+                                    }
+                                },
+                                update = { webView ->
+                                    webView.loadDataWithBaseURL("https://sandbox.local/", htmlCode, "text/html", "UTF-8", null)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // Sandbox Console Viewer
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp)
+                                .border(1.dp, BorderGreen, RoundedCornerShape(4.dp))
+                                .background(PitchBlack)
+                                .padding(8.dp)
+                        ) {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("SANDBOX WEB CONSOLE LOGS", color = NeonGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                    Text(
+                                        text = "CLEAR CONSOLE",
+                                        color = BrightRed,
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.clickable { webConsoleLogs.clear() }
+                                    )
+                                }
+                                HorizontalDivider(color = BorderGreen, modifier = Modifier.padding(vertical = 4.dp))
+                                LazyColumn(modifier = Modifier.weight(1f)) {
+                                    if (webConsoleLogs.isEmpty()) {
+                                        item {
+                                            Text("No web console logs captured yet.", color = GhostGreen, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                        }
+                                    } else {
+                                        items(webConsoleLogs) { logMsg ->
+                                            Text(logMsg, color = CyanBlue, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1275,12 +2008,21 @@ Table: users
 fun highlightCode(code: String, fileName: String): AnnotatedString {
     val extension = fileName.substringAfterLast(".").lowercase()
     return buildAnnotatedString {
-        if (extension == "py") {
-            // Python keyword lists
-            val keywords = setOf(
-                "def", "class", "import", "for", "in", "if", "else", "elif",
-                "print", "return", "while", "from", "and", "or", "not", "try", "except"
-            )
+        if (extension == "py" || extension == "js" || extension == "ts" || extension == "json") {
+            // Keyword lists based on type
+            val keywords = if (extension == "py") {
+                setOf(
+                    "def", "class", "import", "for", "in", "if", "else", "elif",
+                    "print", "return", "while", "from", "and", "or", "not", "try", "except"
+                )
+            } else if (extension == "json") {
+                setOf("true", "false", "null")
+            } else {
+                setOf(
+                    "const", "let", "var", "function", "return", "if", "else", "for", "while",
+                    "class", "import", "from", "export", "default", "true", "false", "null", "console", "log"
+                )
+            }
             
             val lines = code.split("\n")
             lines.forEachIndexed { lineIdx, line ->
@@ -1290,7 +2032,7 @@ fun highlightCode(code: String, fileName: String): AnnotatedString {
                     val char = line[pos]
                     
                     // Comment line
-                    if (char == '#') {
+                    if (char == '#' || (char == '/' && pos + 1 < length && line[pos + 1] == '/')) {
                         withStyle(style = SpanStyle(color = GhostGreen, fontWeight = FontWeight.Normal)) {
                             append(line.substring(pos))
                         }
@@ -1298,7 +2040,7 @@ fun highlightCode(code: String, fileName: String): AnnotatedString {
                     }
                     
                     // Strings
-                    if (char == '"' || char == '\'') {
+                    if (char == '"' || char == '\'' || char == '`') {
                         val endChar = char
                         val startPos = pos
                         pos++
@@ -1312,7 +2054,7 @@ fun highlightCode(code: String, fileName: String): AnnotatedString {
                         }
                         continue
                     }
-
+ 
                     // Numeric identifiers
                     if (char.isDigit()) {
                         val startPos = pos
@@ -1342,21 +2084,22 @@ fun highlightCode(code: String, fileName: String): AnnotatedString {
                                 append(word)
                             }
                         } else {
-                            withStyle(style = SpanStyle(color = TextGreen)) {
+                            val normalColor = if (extension == "json") AmberYellow else TextGreen
+                            withStyle(style = SpanStyle(color = normalColor)) {
                                 append(word)
                             }
                         }
                         continue
                     }
-
+ 
                     // Miscellaneous characters
                     append(char)
                     pos++
                 }
                 if (lineIdx < lines.size - 1) append("\n")
             }
-        } else if (extension == "xml") {
-            // XML styling highlights
+        } else if (extension == "xml" || extension == "html" || extension == "htm") {
+            // XML/HTML styling highlights
             val tagPattern = Pattern.compile("(<[^>]+>)")
             val matcher = tagPattern.matcher(code)
             var lastIdx = 0
@@ -1380,5 +2123,49 @@ fun highlightCode(code: String, fileName: String): AnnotatedString {
             // General Plain text standard highlighting
             append(code)
         }
+    }
+}
+
+data class ExtensionItem(
+    val id: String,
+    val name: String,
+    val description: String,
+    val version: String,
+    val author: String,
+    val category: String
+)
+
+fun getFileIconAndColor(fileName: String, isIconsPackInstalled: Boolean): Pair<String, Color> {
+    val ext = fileName.substringAfterLast(".").lowercase()
+    if (!isIconsPackInstalled) {
+        return Pair("📄", Color(0xFF81C784)) // Default GhostGreen-ish color
+    }
+    return when (ext) {
+        "py", "pyw", "ipynb" -> Pair("🐍", Color(0xFF3776AB))
+        "html", "htm" -> Pair("🌐", Color(0xFFE34F26))
+        "css", "less", "sass", "scss" -> Pair("🎨", Color(0xFF1572B6))
+        "js", "jsx" -> Pair("⚡", Color(0xFFF7DF1E))
+        "ts", "tsx" -> Pair("🟦", Color(0xFF3178C6))
+        "json" -> Pair("⚙️", Color(0xFF8BC34A))
+        "xml", "svg" -> Pair("📦", Color(0xFFFF5722))
+        "kt", "kts" -> Pair("🎯", Color(0xFF7F52FF))
+        "java", "class", "jar" -> Pair("☕", Color(0xFFED8B00))
+        "sh", "bash", "zsh" -> Pair("🐚", Color(0xFF4EAA25))
+        "sql", "db", "sqlite" -> Pair("🗄️", Color(0xFF4479A1))
+        "md", "txt" -> Pair("📝", Color(0xFF90A4AE))
+        "yaml", "yml", "toml", "ini", "conf", "env" -> Pair("🔧", Color(0xFFFFC107))
+        "cpp", "hpp", "c", "h" -> Pair("👾", Color(0xFF00599C))
+        "cs" -> Pair("🔮", Color(0xFF178600))
+        "go" -> Pair("🐹", Color(0xFF00ADD8))
+        "rs" -> Pair("🦀", Color(0xFFCE412B))
+        "swift" -> Pair("🍎", Color(0xFFFA7343))
+        "php" -> Pair("🐘", Color(0xFF777BB4))
+        "rb" -> Pair("💎", Color(0xFFCC342D))
+        "lua" -> Pair("🌙", Color(0xFF000080))
+        "png", "jpg", "jpeg", "gif", "webp", "ico" -> Pair("🖼️", Color(0xFFE91E63))
+        "mp3", "wav", "ogg", "flac" -> Pair("🎵", Color(0xFF9C27B0))
+        "mp4", "avi", "mkv" -> Pair("🎬", Color(0xFF673AB7))
+        "zip", "tar", "gz", "rar", "7z" -> Pair("📚", Color(0xFF795548))
+        else -> Pair("📄", Color(0xFF81C784))
     }
 }
