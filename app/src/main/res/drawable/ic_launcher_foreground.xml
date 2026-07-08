@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/blackroot_icon_fg_1783406112666"
+        android:drawable="@drawable/img_blackroot_icon_1783494955170"
         android:gravity="center" />
 </layer-list>
